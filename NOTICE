@@ -1,0 +1,74 @@
+Phi (φ) — crypto core (phi-crypto)
+Copyright © 2026 Homaan Smart Data Co.  All rights reserved.
+
+  Company: Homaan Smart Data
+  Website: https://homaanic.ir   ·   Product: https://portphi.com
+  GitHub:  https://github.com/homaangit
+
+This product includes software developed by Homaan Smart Data.
+Licensed under the Apache License, Version 2.0 (see the LICENSE file).
+
+------------------------------------------------------------------------
+Intellectual property & ownership
+------------------------------------------------------------------------
+
+The Phi protocol and all original source in this repository are the
+intellectual property of Homaan Smart Data Co. ("Homaan"). Homaan owns and
+reserves all copyright, design, and patent rights in its original Phi work.
+
+Homaan makes this software available to the public for use, study,
+modification, and redistribution under the Apache License, Version 2.0 --
+the governing license for this repository (see the LICENSE file), which
+includes the patent license granted in its Section 3. This notice asserts
+ownership and attribution only; it does not add to, remove from, or
+otherwise modify the terms of the Apache License, Version 2.0.
+
+"Phi", the Greek letter phi (the project mark), and "portphi" are
+trademarks of Homaan Smart Data Co.; trademark rights are reserved and are
+not licensed by the Apache License (see its Section 6).
+
+------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------
+
+phi-crypto is a thin, security-reviewed wrapper over the following
+open-source cryptographic libraries, each retaining its own copyright and
+license. We NEVER hand-roll cryptography — every primitive delegates to a
+mature, audited crate. The exact pinned revisions are recorded in
+Cargo.lock for reproducible, verifiable builds. No affiliation or
+endorsement is implied.
+
+  - docknetwork/crypto       (github.com/docknetwork/crypto)        Apache-2.0
+      bbs_plus · dock_crypto_utils · schnorr_pok  — the phi-bbs-v1
+      BBS+ unlinkable selective disclosure over BLS12-381.
+  - pairing_crypto           (github.com/mattrglobal/pairing_crypto) Apache-2.0
+      the W3C/IRTF `bbs-2023` selective-disclosure suite (BLS12-381
+      SHA-256), conformant with the official IETF/W3C test vectors.
+      Native targets only.
+  - blstrs · blst            (github.com/mattrglobal/blstrs ·        blstrs: MIT OR Apache-2.0
+      github.com/supranational/blst)                                 blst: Apache-2.0
+      — BLS12-381 backend used by pairing_crypto for the bbs-2023 suite.
+  - arkworks                 (github.com/arkworks-rs)               Apache-2.0 OR MIT
+      ark-bls12-381 · ark-ec · ark-ff · ark-serialize · ark-std
+      — pairing-friendly curve and finite-field arithmetic.
+  - RustCrypto               (github.com/RustCrypto)                Apache-2.0 OR MIT
+      k256 (secp256k1) · p256 (secp256r1/P-256) · ecdsa · sha2
+      · blake2 — elliptic-curve signatures and hashing.
+  - subtle                   (github.com/dalek-cryptography/subtle) BSD-3-Clause
+      — constant-time comparison primitives (timing side-channel
+      resistance).
+  - zeroize                  (github.com/RustCrypto/utils)          Apache-2.0 OR MIT
+      — secure wiping of secret material after use.
+  - rand · rand_core · getrandom (github.com/rust-random)          Apache-2.0 OR MIT
+      — cryptographically secure randomness.
+  - serde · serde_json       (github.com/serde-rs)                  Apache-2.0 OR MIT
+  - base64 · hex                                                    Apache-2.0 OR MIT
+      — encoding helpers (base64url for WebAuthn clientDataJSON).
+
+Full license texts for these components are reproduced in their
+respective source packages (resolved via Cargo and pinned in Cargo.lock).
+
+The Phi-specific code — the CryptoSuite abstraction, the dual-curve DID
+operations, the WebAuthn verifier, the voting nullifier/threshold-tally
+primitives, and the WASM/FFI/C-ABI boundaries — is original work of
+Homaan Smart Data.

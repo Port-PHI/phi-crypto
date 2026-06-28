@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+# cargo-deny supply-chain policy for phi-crypto.
+# Run: `cargo deny check advisories bans sources`
+# The pinned cryptography forks are documented in SECURITY.md ("Dependency fork watchlist").
+
+[advisories]
+# Fail on any RustSec advisory and on yanked crates. Entries are added to `ignore` only after
+# triage, each with a written rationale — never silently. Monitoring: cargo-deny runs in
+# CI on every push, and this ignore-list is re-triaged each release and whenever a new advisory is
+# raised against these crates, so a future CVE on an ignored crate fails CI rather than passing silently.
+yanked = "deny"
+ignore = [
+    # Unmaintained-status advisories (no known vulnerability, no upstream fix) on two transitive
+    # build-time proc-macro crates pulled in by the pinned docknetwork/crypto + ark-* stack. They do
+    # not ship in the runtime artifact and carry no security impact. Re-triage if a CVE is filed or
+    # the upstream crypto forks drop them.
+    "RUSTSEC-2024-0388", # `derivative` — proc-macro, unmaintained (via docknetwork/crypto)
+    "RUSTSEC-2024-0436", # `paste` — proc-macro, unmaintained (via the ark-* / crypto stack)
+]
+
+[bans]
+# A wildcard ("*") version requirement is forbidden: every dependency is pinned through Cargo.lock.
+wildcards = "deny"
+# Duplicate major versions are surfaced (not fatal) so the tree stays auditable.
+multiple-versions = "warn"
+
+[sources]
+# Crates may originate only from crates.io or the explicitly listed cryptography forks; any other
+# registry or git remote fails. Git dependencies carry no Cargo.lock checksum, so these remotes are
+# additionally guarded by the reproducible-vendor CI job and watched in SECURITY.md.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    "https://github.com/docknetwork/crypto",
+    "https://github.com/mattrglobal/blstrs",
+    "https://github.com/mattrglobal/pairing_crypto",
+]

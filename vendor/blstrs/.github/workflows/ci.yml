@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: master
+
+env:
+  MSRV: 1.56.0
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  set-msrv:
+    runs-on: ubuntu-latest
+    outputs:
+      msrv: ${{ steps.msrv.outputs.msrv }}
+    steps:
+      - uses: actions/checkout@v2
+      - id: msrv
+        run: echo "::set-output name=msrv::$(echo $MSRV)"
+
+  # Linux tests
+  linux:
+    needs: set-msrv
+    strategy:
+      matrix:
+        include:
+          # 32-bit Linux/x86
+          - target: i686-unknown-linux-gnu
+            rust: ${{needs.set-msrv.outputs.msrv}}
+            deps: sudo apt update && sudo apt install gcc-multilib
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
+          override: true
+      - name: Install opencl
+        run: sudo apt-get install -y ocl-icd-opencl-dev
+      - run: ${{ matrix.deps }}
+      - run: cargo test --target ${{ matrix.target }}
+      - run: cargo test --target ${{ matrix.target }} --features portable
+
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - run: rustup component add clippy
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+
+  check_fmt_and_docs:
+    name: Checking fmt and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt
+
+      - name: setup
+        run: |
+          rustup component add rustfmt
+          rustc --version
+      - name: fmt
+        run: cargo fmt --all -- --check
+
+      - name: Docs
+        run: cargo doc

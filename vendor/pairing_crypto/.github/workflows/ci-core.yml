@@ -1,0 +1,118 @@
+name: ci-core
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  build_test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # pin@v3.5.1
+
+      - name: Setup stable rust toolchain
+        uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f # pin@v1.0.6
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      # Note some of the rules we use for fmt and clippy are only available with the nightly toolchain
+      - name: Setup nightly rust toolchain
+        uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f # pin@v1.0.6
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+
+      - name: Run cargo format
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: fmt
+          args: --all -- --check
+          toolchain: nightly # Note some of the rules we use for fmt are only available with the nightly toolchain
+
+      - name: Run cargo clippy
+        # temporarily disabled due to CI error "the following explicit lifetimes could be elided"
+        # https://github.com/mattrglobal/pairing_crypto/actions/runs/11338499573/job/31531816611
+        if: false
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: clippy
+          args: -- -D warnings
+          toolchain: nightly # Note some of the rules we use for clippy are only available with the nightly toolchain
+
+      - name: Run cargo check
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: check
+          toolchain: stable
+
+      - name: Run cargo doc
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: doc
+          args: --no-deps --all-features
+          toolchain: nightly
+
+      - name: Run cargo audit
+        # temporarily disabled due to CI error "error: not found: Couldn't load Cargo.lock" "invalid Cargo.lock format version: `4`"
+        # https://github.com/mattrglobal/pairing_crypto/actions/runs/11338890443/job/31533150473#step:10:15
+        if: false # temporarily disabled due to CI error
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: audit
+          toolchain: stable
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
+      - name: Run cargo deny
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: deny
+          args: check
+          toolchain: stable
+
+      - name: Run cargo build
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: build
+          toolchain: stable
+
+      - name: Run cargo test
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: test
+          args: "--release"
+          toolchain: stable
+
+      - name: Check benchmarks
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: bench
+          args: --no-run
+          toolchain: stable
+
+      - name: Generate fixtures
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: run
+          args: -p bbs-fixtures-generator -- -i  tests/fixtures/bbs/test_asset.json -o tests/fixtures/bbs/
+          toolchain: stable
+
+      - name: Test after generating fixtures
+        uses: marcopolo/cargo@a527bf4d534717ff4424a84446c5d710f8833139 # pin@master
+        with:
+          command: test
+          args: "--release"
+          toolchain: stable

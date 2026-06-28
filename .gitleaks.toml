@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# gitleaks configuration for phi-crypto. Extends the default ruleset and adds a narrowly-scoped
+# allowlist for content that only LOOKS like a secret: published cryptographic test vectors and
+# vendored third-party sources. Real application secrets must never enter this repository (see
+# SECURITY.md).
+#
+# gitleaks auto-loads this file from the scan root in `gitleaks git .` runs; no --config flag needed.
+
+# Require a gitleaks new enough to honor [[allowlists]] (8.25+).
+minVersion = "8.30.1"
+
+[extend]
+useDefault = true
+
+# Published bbs-2023 known-answer vectors and vendored third-party crates. The "secretKey" fields in
+# the IETF/W3C fixtures are standard published vectors, not live keys; vendored crates ship their own
+# example keys and checksums. Neither is first-party material this project must police for secrets.
+[[allowlists]]
+description = "Public bbs-2023 test vectors and vendored third-party code (no first-party secrets)."
+paths = [
+  '''tests/vectors/.*''',     # Official IETF/W3C bbs-2023 known-answer fixtures.
+  '''tests/integration\.rs''', # Inline copy of the same public bbs-2023 fixture 001 secret-key vector.
+  '''vendor/.*''',            # Crates from `cargo vendor`; third-party example keys/checksums.
+]

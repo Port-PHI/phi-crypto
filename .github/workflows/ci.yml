@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: Apache-2.0
+# CI for phi-crypto. The product is built and tested STRICTLY offline from the committed ./vendor
+# directory (no crate downloads at build time). Toolchain setup and the audit/secret-scan tooling
+# use the network for environment setup only — never to fetch project dependencies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: Offline build · test · lint (from vendor)
+    runs-on: ubuntu-latest
+    env:
+      # No network during the build: every dependency is read from ./vendor.
+      CARGO_NET_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain (stable + wasm32 + clippy + rustfmt)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Format — rustfmt must be clean
+        run: cargo fmt --all --check
+
+      - name: Build — native (offline, locked)
+        run: cargo build --locked --offline --all-targets
+
+      - name: Test — native (offline, locked)
+        run: cargo test --locked --offline
+
+      - name: Clippy — deny all warnings (offline, locked)
+        run: cargo clippy --locked --offline --all-targets -- -D warnings
+
+      # Blocking wasm32 build — the regression guard for the web vote client's Semaphore binding.
+      # semaphore_bind_nonce forwards the 3-input header (election_id, nullifier, signal), so a
+      # wrong-arity call (e.g. dropping the ballot `signal`, which previously broke this build with
+      # E0061) is a hard compile error caught here. The blst/bbs-2023 backend must stay gated out on
+      # wasm32 (wasm keeps phi-bbs-v1); the signal-folding semantics are covered natively in semaphore.rs.
+      - name: Build — wasm32 lib (offline, locked; must NOT pull the blst/bbs-2023 backend)
+        run: cargo build --locked --offline --target wasm32-unknown-unknown --lib
+
+  audit:
+    name: Security audit (RustSec advisory DB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install cargo-audit (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          tool: cargo-audit
+      # Audits Cargo.lock against the RustSec advisory DB. Does not build the product; the DB is
+      # fetched from the network (this is auditing, not the offline product build).
+      - name: cargo audit
+        run: cargo audit
+
+  deny:
+    name: Supply-chain policy (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install cargo-deny (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          # Pin the version: cargo-deny's defaults tighten across releases (e.g. unmaintained
+          # advisories became hard errors), so an unpinned "latest" can break a previously-green run.
+          tool: cargo-deny@0.19.9
+      # Enforces deny.toml: no advisories/yanked crates, no wildcard versions, and crates only from
+      # crates.io or the pinned crypto forks. The advisory DB is fetched from the network.
+      - name: cargo deny check
+        run: cargo deny check advisories bans sources
+
+  vendor-verify:
+    name: Reproducible vendor (git deps are not checksummed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      # Cargo does not checksum git dependencies, so the committed ./vendor is the trust anchor.
+      # Regenerate it from Cargo.lock's pinned revisions and require zero drift — any tampering with
+      # a vendored crypto fork (e.g. docknetwork/crypto, mattrglobal/*) fails the build here.
+      - name: Re-vendor from pinned revisions; require no drift
+        run: |
+          cargo vendor --locked vendor > /dev/null
+          if ! git diff --exit-code -- vendor; then
+            echo "::error::vendor/ does not match a fresh 'cargo vendor' from Cargo.lock (tampering or drift)"
+            exit 1
+          fi
+
+  secret-scan:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history so gitleaks scans every commit, not just HEAD
+      # The gitleaks binary is run directly (pinned version + verified SHA-256) instead of
+      # gitleaks-action: that action requires a paid GITLEAKS_LICENSE for org-owned repositories,
+      # while the binary has no such gate. Network use here is tooling setup only (see header).
+      - name: Secret scan (gitleaks, pinned binary)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner --exit-code 1
