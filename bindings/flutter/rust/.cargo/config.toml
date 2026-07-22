@@ -1,0 +1,33 @@
+# Fully offline / local build for phi-crypto-flutter: every dependency is read from the committed
+# ./vendor directory (generated with `cargo vendor`), so no download from crates.io or GitHub happens
+# at build time. This vendor tree is self-contained — it includes the phi_crypto core's dependency
+# graph (reached via the path dependency) plus the flutter_rust_bridge runtime. Build/test offline
+# with `cargo build --offline` / `cargo test --offline`.
+#
+# These source replacements take precedence over the core crate's ancestor .cargo/config.toml
+# (deeper config wins), so building from this sub-crate uses this vendor/, while building the core
+# from its own root is unaffected.
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/docknetwork/crypto?rev=224f195b"]
+git = "https://github.com/docknetwork/crypto"
+rev = "224f195b"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/mattrglobal/blstrs.git?rev=a0cb960"]
+git = "https://github.com/mattrglobal/blstrs.git"
+rev = "a0cb960"
+replace-with = "vendored-sources"
+
+# Keyed by the immutable commit rev, matching the core's Cargo.toml pin. A tag is mutable and can be
+# repointed at a different commit; the core moved to the rev form, and this replacement key must track
+# it exactly or the offline resolve cannot find the vendored source at all.
+[source."git+https://github.com/mattrglobal/pairing_crypto?rev=3228ba6ce0d90a14ba3a98dc1df7adb8bde0f86f"]
+git = "https://github.com/mattrglobal/pairing_crypto"
+rev = "3228ba6ce0d90a14ba3a98dc1df7adb8bde0f86f"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

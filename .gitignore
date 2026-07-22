@@ -1,0 +1,25 @@
+# Build outputs (Rust)
+/target/
+
+# Bridge outputs (generated — rebuilt from source)
+/pkg-web/
+/pkg-node/
+/phi_crypto.dylib
+/phi_crypto.so
+/*.wasm
+
+# Environment and secrets — never committed.
+# These patterns are intentionally root-anchored (leading /) so they cover only our own code and
+# never files under vendor/ (RustCrypto crates ship *.pem test fixtures that are part of the
+# vendoring checksum; ignoring them would break the offline build).
+/.env
+/*.pem
+/*.key
+/src/**/*.pem
+/src/**/*.key
+
+# OS (anywhere — not part of crate checksums)
+.DS_Store
+
+# Intentionally committed (fully offline self-containment, like `go mod vendor` in phi-chain):
+#   vendor/  ·  .cargo/config.toml  ·  Cargo.lock  ·  phi_crypto.h

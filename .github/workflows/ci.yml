@@ -1,0 +1,318 @@
+# SPDX-License-Identifier: Apache-2.0
+# CI for phi-crypto. The product is built and tested STRICTLY offline from the committed ./vendor
+# directory (no crate downloads at build time). Toolchain setup and the audit/secret-scan tooling
+# use the network for environment setup only — never to fetch project dependencies.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: Offline build · test · lint (from vendor)
+    runs-on: ubuntu-latest
+    env:
+      # No network during the build: every dependency is read from ./vendor.
+      CARGO_NET_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain (stable + wasm32 + clippy + rustfmt)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Format — rustfmt must be clean
+        run: cargo fmt --all --check
+
+      - name: Build — native (offline, locked)
+        run: cargo build --locked --offline --all-targets
+
+      - name: Test — native (offline, locked)
+        run: cargo test --locked --offline
+
+      - name: Clippy — deny all warnings (offline, locked)
+        run: cargo clippy --locked --offline --all-targets -- -D warnings
+
+      # The voting_snark feature carries the vote-soundness path (algebraic nullifier, DLEQ
+      # witness-equality, and the C-ABI export the chain links). It is off by default, so every step
+      # above compiles it out entirely — without these steps its code and tests are never exercised
+      # and could rot unnoticed until the audit clears and it is switched on. Run as additional steps
+      # rather than replacing the default ones: the default build is what ships today, so both
+      # configurations must stay green.
+      - name: Test — voting_snark feature (offline, locked)
+        run: cargo test --locked --offline --features voting_snark
+
+      - name: Clippy — voting_snark feature, deny all warnings (offline, locked)
+        run: cargo clippy --locked --offline --all-targets --features voting_snark -- -D warnings
+
+      # Blocking wasm32 build — the regression guard for the web vote client's Semaphore binding.
+      # semaphore_bind_nonce forwards the 3-input header (election_id, nullifier, signal), so a
+      # wrong-arity call (e.g. dropping the ballot `signal`, which previously broke this build with
+      # E0061) is a hard compile error caught here. The blst/bbs-2023 backend must stay gated out on
+      # wasm32 (wasm keeps phi-bbs-v1); the signal-folding semantics are covered natively in semaphore.rs.
+      - name: Build — wasm32 lib (offline, locked; must NOT pull the blst/bbs-2023 backend)
+        run: cargo build --locked --offline --target wasm32-unknown-unknown --lib
+
+      # Same wasm32 guard with the gated path compiled in: the web vote client is the consumer that
+      # will build this way, so the feature must not drag in a backend that cannot target wasm32.
+      - name: Build — wasm32 lib with voting_snark (offline, locked)
+        run: cargo build --locked --offline --target wasm32-unknown-unknown --lib --features voting_snark
+
+  flutter-binding:
+    name: Flutter FFI crate · offline test · lint · policy
+    runs-on: ubuntu-latest
+    # The flutter_rust_bridge output (bindings/flutter/rust) is a separate crate, not a workspace
+    # member, so the jobs above never see it. It adds no cryptography — every api.rs function is a
+    # thin wrapper over the `phi_crypto` core it depends on by path — but it is the surface the mobile
+    # app links, so it gets the same gates as the core: offline build/test from its own committed
+    # ./vendor, clippy with warnings denied, and the cargo-deny supply-chain policy.
+    # NOTE: this job does not regenerate the frb glue. The generated prover binding is hand-#[cfg]-
+    # gated (frb bakes the resolved cfg), so a regen would silently drop the gates; the committed
+    # glue is the source of truth here and is only ever regenerated deliberately, out of band.
+    defaults:
+      run:
+        working-directory: bindings/flutter/rust
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain (stable + clippy)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+
+      - name: Install cargo-deny (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          # Same pin as the core `deny` job: cargo-deny's defaults tighten across releases, so an
+          # unpinned "latest" can break a previously-green run.
+          tool: cargo-deny@0.19.9
+
+      # Enforces bindings/flutter/rust/deny.toml, which is kept in lock-step with the core's policy.
+      # `licenses` holds the permissive-only allow-list: a dependency arriving under a copyleft or
+      # unreviewed license fails here rather than reaching the shipped artifact.
+      # The advisory DB is fetched from the network (this is auditing, not the offline product build).
+      - name: cargo deny check (supply-chain policy)
+        run: cargo deny check advisories bans sources licenses
+
+      # Everything below is STRICTLY offline: the crate carries its own .cargo/config.toml and
+      # committed ./vendor, exactly like the core.
+      - name: Build (offline, locked)
+        run: cargo build --locked --offline --all-targets
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      - name: Test (offline, locked)
+        run: cargo test --locked --offline
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      - name: Clippy — deny all warnings (offline, locked)
+        run: cargo clippy --locked --offline --all-targets -- -D warnings
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      # The mobile vote client builds this crate with voting_snark on (it forwards to the core's
+      # gated prover), so that configuration gets the same test and lint gates as the default one.
+      - name: Test — voting_snark feature (offline, locked)
+        run: cargo test --locked --offline --features voting_snark
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      - name: Clippy — voting_snark feature, deny all warnings (offline, locked)
+        run: cargo clippy --locked --offline --all-targets --features voting_snark -- -D warnings
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+  fuzz:
+    name: C-ABI decoders · cargo-fuzz (bounded)
+    runs-on: ubuntu-latest
+    # The C-ABI exports decode attacker-controlled bytes during consensus, and the shipped staticlib
+    # is built with panic = "abort" — so on that path a panic does not become an error, it halts the
+    # validator. Their security property is panic-freedom, and the unit tests can only pin the
+    # fail-closed cases somebody thought to write down. This job covers the rest: libFuzzer drives the
+    # decoders with generated input and treats a panic, an abort or a sanitizer report as a crash.
+    #
+    # Bounded on purpose. A fixed-time run is a regression gate, not a fuzzing campaign: it catches
+    # what the deterministic tests miss without turning every PR into a long job. Deep campaigns are
+    # run out of band. There is no committed seed corpus yet, so each run starts cold — the coverage
+    # here is shallow by construction and is not evidence of exhaustive fuzzing.
+    #
+    # NETWORK: this is the ONE job that fetches from crates.io. The fuzz crate is a test-only tool —
+    # nothing links it into a shipped artifact — so its dependencies are pinned by the committed
+    # fuzz/Cargo.lock and fetched, rather than adding a large third-party tree to a public repository
+    # for a build that never ships. Reproducibility comes from `--locked`: the build fails rather than
+    # silently resolving a different version. Every other job here, and every build of the library,
+    # the staticlib and the WASM module, remains strictly offline from the committed vendor trees.
+    #
+    # Be precise about the scope: with the root redirect set aside (below), the core's own
+    # dependencies are resolved from the network here too, not from ../vendor. That is fine for a
+    # job that ships nothing and is pinned by lockfiles either way, but it means this job is NOT
+    # evidence that the offline vendored build works — the build-test and flutter-binding jobs are.
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # cargo-fuzz requires nightly: the sanitizer and coverage flags it passes (-Zsanitizer=address,
+      # -Cpasses=sancov-module) are unstable. This is the only job that is not on stable, and it gates
+      # nothing that ships — the library itself is built and tested on stable everywhere else.
+      - name: Install Rust toolchain (nightly)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: nightly
+
+      - name: Install cargo-fuzz (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          # Pinned for the same reason as cargo-deny above: an unpinned "latest" can change the flags
+          # it passes and break a previously-green run.
+          tool: cargo-fuzz@0.12.0
+
+      # Cargo applies source replacement repo-wide, and the repo-root .cargo/config.toml redirects
+      # crates.io to the committed vendor tree. A sub-crate cannot opt out of that: a child config can
+      # only point `replace-with` at a DIFFERENT source, and no valid source is crates.io itself
+      # (cargo rejects a second definition of the same registry, and self-replacement as a cycle). So
+      # the redirect is set aside for this job's ephemeral checkout.
+      #
+      # This cannot affect anything that ships: every other job runs in its own checkout with the
+      # config intact, and no artifact is built here.
+      - name: Set the repo-root vendor redirect aside (fuzz deps are fetched, not vendored)
+        working-directory: .
+        run: mv .cargo/config.toml .cargo/config.toml.unused
+
+      # The only network step in this workflow. `--locked` refuses to update the lockfile, so an
+      # out-of-date or tampered fuzz/Cargo.lock fails here instead of silently resolving a different
+      # version. It also populates the cargo cache, which is what lets the steps below run offline.
+      #
+      # `cargo fuzz` has no --locked passthrough of its own, so the pin is enforced at this step and
+      # the build is then forced offline: with the cache holding exactly what the lockfile named,
+      # cargo cannot substitute anything else.
+      - name: Fetch fuzz dependencies (pinned by fuzz/Cargo.lock)
+        run: cargo fetch --locked
+
+      - name: Build fuzz target (offline, from the fetched pin)
+        run: cargo fuzz build ffi_decoders
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      # -max_total_time bounds the run; -max_len keeps inputs in the range these decoders actually
+      # see. A crash leaves a reproducer in fuzz/artifacts/, uploaded below.
+      - name: Run fuzz target (bounded)
+        run: cargo fuzz run ffi_decoders -- -max_total_time=60 -max_len=4096
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
+  c-abi-header-drift:
+    name: C-ABI headers match the Rust exports
+    runs-on: ubuntu-latest
+    # The headers are what phi-chain compiles against. If a declaration and its Rust export disagree
+    # about a function's arity or types, the C caller builds the wrong stack frame and the validator
+    # corrupts memory — with no compile error on either side, because C trusts the header and Rust
+    # trusts the symbol. Nothing regenerated or diffed them, so that drift could ship silently.
+    #
+    # This job regenerates both headers with cbindgen and diffs the DECLARATIONS — name, return type
+    # and every parameter type in order — against the committed files. The comparison is over
+    # declarations rather than whole files on purpose: the committed headers carry hand-written prose
+    # the Go consumer depends on (the return-code contract, the cgo snippet) that cbindgen does not
+    # emit, so a byte-for-byte diff would fail on the prose every time, and a gate that always fails
+    # is a gate that gets disabled. Any added, removed, renamed, retyped or reordered parameter fails
+    # here; prose does not.
+    #
+    # The same script also runs the toolchain-free shape gate, which is what covers the offline tree
+    # where cbindgen is not vendored.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Install cbindgen (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          # Pinned for the same reason cargo-deny is: cbindgen's output formatting changes across
+          # releases, and an unpinned "latest" would turn a formatting change into a red gate on a
+          # tree nobody touched.
+          tool: cbindgen@0.29.0
+
+      - name: Headers must match the Rust exports (regenerate + diff declarations)
+        run: scripts/check_c_abi_headers.sh
+        env:
+          CARGO_NET_OFFLINE: "true"
+
+  deny:
+    name: Supply-chain policy (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install cargo-deny (prebuilt)
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          # Pin the version: cargo-deny's defaults tighten across releases (e.g. unmaintained
+          # advisories became hard errors), so an unpinned "latest" can break a previously-green run.
+          tool: cargo-deny@0.19.9
+      # cargo-deny is the AUTHORITATIVE advisory check: its `advisories` check scans the same RustSec DB
+      # as cargo-audit but honors the triaged, documented deny.toml ignore list (a redundant cargo-audit
+      # job was retired because it re-flagged those deliberately-deferred advisories). Enforces deny.toml:
+      # no un-triaged advisories/yanked crates, no wildcard versions, crates only from crates.io or
+      # the pinned crypto forks, and only the permissive licenses on the explicit allow-list (a
+      # copyleft or unreviewed license fails rather than being absorbed into libphi_crypto.a).
+      # The advisory DB is fetched from the network.
+      - name: cargo deny check
+        run: cargo deny check advisories bans sources licenses
+
+  vendor-verify:
+    name: Reproducible vendor (git deps are not checksummed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      # Cargo does not checksum git dependencies, so the committed ./vendor is the trust anchor.
+      # Regenerate it from Cargo.lock's pinned revisions and require zero drift — any tampering with
+      # a vendored crypto fork (e.g. docknetwork/crypto, mattrglobal/*) fails the build here.
+      - name: Re-vendor from pinned revisions; require no drift
+        run: |
+          cargo vendor --locked vendor > /dev/null
+          if ! git diff --exit-code -- vendor; then
+            echo "::error::vendor/ does not match a fresh 'cargo vendor' from Cargo.lock (tampering or drift)"
+            exit 1
+          fi
+
+  secret-scan:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history so gitleaks scans every commit, not just HEAD
+      # The gitleaks binary is run directly (pinned version + verified SHA-256) instead of
+      # gitleaks-action: that action requires a paid GITLEAKS_LICENSE for org-owned repositories,
+      # while the binary has no such gate. Network use here is tooling setup only (see header).
+      - name: Secret scan (gitleaks, pinned binary)
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git . --redact --no-banner --exit-code 1

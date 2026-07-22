@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+# cargo-deny supply-chain policy for phi-crypto-flutter (the flutter_rust_bridge FFI output).
+# Run: `cargo deny check advisories bans sources`
+#
+# This crate depends on the `phi_crypto` core by path, so its dependency tree includes the same
+# pinned cryptography forks as the core (documented in ../../../SECURITY.md), plus the crates.io
+# `flutter_rust_bridge` runtime. Policy is kept in lock-step with the core's deny.toml; it is never
+# loosened to accommodate a new dependency — a policy break is reported, not silenced.
+
+[advisories]
+# Fail on any RustSec advisory and on yanked crates. Entries are added to `ignore` only after
+# triage, each with a written rationale — never silently.
+yanked = "deny"
+ignore = [
+    # Same two unmaintained-status proc-macro advisories the core carries, reached here through the
+    # `phi_crypto` path dependency (docknetwork/crypto + ark-* stack). Build-time only, not in the
+    # runtime artifact, no known vulnerability. Re-triage if a CVE is filed.
+    "RUSTSEC-2024-0388", # `derivative` — proc-macro, unmaintained (via phi_crypto → docknetwork/crypto)
+    "RUSTSEC-2024-0436", # `paste` — proc-macro, unmaintained (via phi_crypto → ark-* / crypto stack)
+    # RUSTSEC-2026-0204 — `crossbeam-epoch` 0.9.18: invalid-pointer deref in the `fmt::Pointer` /
+    # `fmt::Display` impls for `Atomic`/`Shared`, i.e. only when such a pointer is explicitly
+    # formatted (`{}` / `{:p}`). Reached here through the very same ark-* / rayon stack as the core,
+    # via the `phi_crypto` path dependency — this crate adds no cryptography and no new path to it.
+    # NOT REACHABLE: neither rayon, crossbeam-deque, arkworks, phi_crypto, nor this binding ever
+    # formats a crossbeam `Atomic`/`Shared` (zero call sites), so the vulnerable code is dead in this
+    # build, and its worst case if reached is a crash, not memory corruption. The version is pinned
+    # transitively by ark-ec/rayon and cannot be bumped here independently of the core.
+    # REMOVE together with the core's entry when ark-ec / rayon bump crossbeam-epoch to >= 0.9.20.
+    "RUSTSEC-2026-0204", # `crossbeam-epoch` — invalid-ptr deref in Display/Pointer, unreachable (via phi_crypto → rayon/ark-*)
+]
+
+[bans]
+# A wildcard ("*") version requirement is forbidden for registry/git dependencies: every such
+# dependency is pinned through Cargo.lock (same posture as the core's deny.toml).
+wildcards = "deny"
+# The sole exception is the internal `phi_crypto = { path = "../../.." }` dependency: a path
+# dependency carries no version requirement, which cargo-deny reports as a wildcard. It is pinned far
+# more strongly than any version range — by the in-tree path — so it is exempted here. This does NOT
+# relax the policy for any external (crates.io / git) dependency, including flutter_rust_bridge.
+allow-wildcard-paths = true
+# Duplicate major versions are surfaced (not fatal) so the tree stays auditable.
+multiple-versions = "warn"
+
+[sources]
+# Crates may originate only from crates.io or the explicitly listed cryptography forks (reached via
+# the phi_crypto path dependency); any other registry or git remote fails.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    "https://github.com/docknetwork/crypto",
+    "https://github.com/mattrglobal/blstrs",
+    "https://github.com/mattrglobal/pairing_crypto",
+]
+
+[licenses]
+# PERMISSIVE-ONLY allow-list, kept in lock-step with the core's deny.toml (../../../deny.toml). The
+# tree is the core's plus the flutter_rust_bridge runtime and resolves to the same license set. No
+# copyleft (GPL/LGPL/AGPL/MPL) and no unknown license is permitted; the list is never widened to
+# accommodate a new dependency — a policy break is reported, not silenced.
+#
+# Most of the tree is dual-licensed "MIT OR Apache-2.0" and resolves to Apache-2.0; MIT is required
+# for the crates offered under MIT alone.
+allow = [
+    "Apache-2.0",                     # the project's own license and most of the crypto stack
+    "Apache-2.0 WITH LLVM-exception", # rustix, wasi, linux-raw-sys
+    "MIT",                            # MIT-only crates
+    "BSD-2-Clause",                   # zerocopy
+    "BSD-3-Clause",                   # subtle
+    "Unicode-3.0",                    # unicode-ident
+    "Unlicense",                      # byteorder, memchr (public-domain dedication)
+    "Zlib",                           # cfg_eval
+]
+# A crate whose license cannot be determined is rejected by construction: the allow-list is explicit,
+# so an undetermined license is simply not on it. (cargo-deny's old `unlicensed` key was removed in
+# 0.19 — this allow-list is the supported way to express the same intent.)

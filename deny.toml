@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: Apache-2.0
+# cargo-deny supply-chain policy for phi-crypto.
+# Run: `cargo deny check advisories bans sources`
+# The pinned cryptography forks are documented in SECURITY.md ("Dependency fork watchlist").
+
+[advisories]
+# Fail on any RustSec advisory and on yanked crates. Entries are added to `ignore` only after
+# triage, each with a written rationale — never silently. Monitoring: cargo-deny runs in
+# CI on every push, and this ignore-list is re-triaged each release and whenever a new advisory is
+# raised against these crates, so a future CVE on an ignored crate fails CI rather than passing silently.
+yanked = "deny"
+ignore = [
+    # Unmaintained-status advisories (no known vulnerability, no upstream fix) on two transitive
+    # build-time proc-macro crates pulled in by the pinned docknetwork/crypto + ark-* stack. They do
+    # not ship in the runtime artifact and carry no security impact. Re-triage if a CVE is filed or
+    # the upstream crypto forks drop them.
+    "RUSTSEC-2024-0388", # `derivative` — proc-macro, unmaintained (via docknetwork/crypto)
+    "RUSTSEC-2024-0436", # `paste` — proc-macro, unmaintained (via the ark-* / crypto stack)
+    # RUSTSEC-2026-0204 — `crossbeam-epoch` 0.9.18: invalid-pointer deref in the `fmt::Pointer` /
+    # `fmt::Display` impls for `Atomic`/`Shared`, i.e. only when such a pointer is explicitly
+    # formatted (`{}` / `{:p}`). NOT REACHABLE here: crossbeam-epoch is a deep transitive dep reached
+    # only via the ark-* `parallel` feature → rayon → crossbeam-deque (work-stealing deque); neither
+    # rayon, crossbeam-deque, arkworks, nor phi-crypto ever format a crossbeam `Atomic`/`Shared`
+    # (zero call sites), so the vulnerable code is dead in this build, and its worst case if reached
+    # is a crash, not memory corruption. A patch exists (>= 0.9.20) but the version is pinned
+    # transitively by ark-ec/rayon and, being compiled into the release `libphi_crypto.a`, bumping it
+    # would change the consensus-critical staticlib hash (an owner-gated re-pin) and, under the
+    # offline/vendored setup, force a re-vendor — disproportionate for an unreachable formatting bug.
+    # REMOVE this entry when ark-ec / rayon (or the pinned docknetwork crypto crates) bump
+    # crossbeam-epoch to >= 0.9.20, batched with that release's already-required `.a` re-pin.
+    "RUSTSEC-2026-0204", # `crossbeam-epoch` — invalid-ptr deref in Display/Pointer, unreachable (via rayon/ark-*)
+]
+
+[bans]
+# A wildcard ("*") version requirement is forbidden: every dependency is pinned through Cargo.lock.
+wildcards = "deny"
+# Duplicate major versions are surfaced (not fatal) so the tree stays auditable.
+multiple-versions = "warn"
+
+[sources]
+# Crates may originate only from crates.io or the explicitly listed cryptography forks; any other
+# registry or git remote fails. Git dependencies carry no Cargo.lock checksum, so these remotes are
+# additionally guarded by the reproducible-vendor CI job and watched in SECURITY.md.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    "https://github.com/docknetwork/crypto",
+    "https://github.com/mattrglobal/blstrs",
+    "https://github.com/mattrglobal/pairing_crypto",
+]
+
+[licenses]
+# PERMISSIVE-ONLY allow-list. Every entry below is a license actually present in the vendored tree —
+# the list is not a generic "permissive licenses" set, so a dependency arriving under a license nobody
+# has reviewed fails the gate instead of being quietly absorbed. No copyleft (GPL/LGPL/AGPL/MPL) and
+# no unknown license is permitted: phi-crypto ships inside a statically linked artifact
+# (libphi_crypto.a) consumed by phi-chain, an Apache-2.0 work, and a copyleft dependency would impose
+# obligations that posture cannot satisfy.
+#
+# Most of the tree is dual-licensed "MIT OR Apache-2.0" and resolves to Apache-2.0; MIT is required
+# for the crates offered under MIT alone.
+allow = [
+    "Apache-2.0",                     # the project's own license and most of the crypto stack
+    "Apache-2.0 WITH LLVM-exception", # rustix, wasi, linux-raw-sys
+    "MIT",                            # MIT-only crates (e.g. the dev-only `zmij` via serde_json)
+    "BSD-2-Clause",                   # zerocopy
+    "BSD-3-Clause",                   # subtle
+    "Unicode-3.0",                    # unicode-ident
+    "Unlicense",                      # byteorder, memchr (public-domain dedication)
+    "Zlib",                           # cfg_eval
+]
+# A crate whose license cannot be determined is rejected by construction: the allow-list is explicit,
+# so an undetermined license is simply not on it. (cargo-deny's old `unlicensed` key was removed in
+# 0.19 — this allow-list is the supported way to express the same intent.)
+
+# NOTE: pairing_crypto declares `license = "Apache-2"` in its manifest, which is not a valid SPDX
+# identifier, so cargo-deny emits a parse warning for it. No clarification is needed: cargo-deny falls
+# back to the crate's bundled LICENSE file, which is the verbatim Apache License 2.0 text, and
+# resolves it to Apache-2.0 on its own. Add a [[licenses.clarify]] entry only if a crate's license
+# ever genuinely cannot be resolved — none currently requires one.

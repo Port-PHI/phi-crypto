@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "phi_crypto_flutter"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+description = "Flutter (flutter_rust_bridge) FFI output of phi-crypto — a thin, safe mirror of the core's holder-side WASM surface for the Phi mobile app. Adds no cryptography."
+repository = "https://github.com/Port-PHI/phi-crypto"
+authors = ["Homaan Smart Data Co. <dev@portphi.com>"]
+publish = false
+
+[lib]
+# cdylib → Android .so and the host .dylib; staticlib → iOS .a; lib(rlib) → unit/integration tests.
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[features]
+# Anonymous-voting derivation-proof prover (voteProve), forwarded to the core's gated module. OFF by
+# default so the default Flutter binding is unchanged; the mobile vote client builds with this feature.
+# Adds no dependency and no new vendored crate — it only turns on already-vendored code.
+voting_snark = ["phi_crypto/voting_snark"]
+
+[dependencies]
+# The audited phi-crypto core, by path. This is the ONLY source of cryptography; every api.rs
+# function is a thin wrapper over it. The core crate is not modified by this sub-crate.
+phi_crypto = { path = "../../.." }
+# Pinned to the exact version of the `flutter_rust_bridge_codegen` used to generate the committed
+# bindings (runtime == codegen). Bumping this requires regenerating and re-vendoring.
+flutter_rust_bridge = "=2.12.0"
+# Wipe the caller's secret credential material after the prove wrapper returns (already vendored via
+# the core; no new crate). The core zeroizes its own witnesses independently.
+zeroize = "1.7"
+
+[dev-dependencies]
+# Test-only helpers, all already in the vendor tree via the phi_crypto core (no vendor drift). Used
+# to build fixtures (a valid WebAuthn assertion) and to name the core's Zeroizing secret type.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand_core = { version = "0.6", features = ["std", "getrandom"] }
