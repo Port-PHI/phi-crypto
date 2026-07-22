@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+name: phi_crypto_ffi
+description: >-
+  Dart bindings for phi-crypto over flutter_rust_bridge — the native FFI holder
+  surface of the Phi crypto core for the Phi mobile app. Adds no cryptography.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  # Pinned to the exact flutter_rust_bridge version used to generate the committed bindings
+  # (must equal the Rust `flutter_rust_bridge` crate and the codegen version).
+  flutter_rust_bridge: 2.12.0
+
+dev_dependencies:
+  lints: ">=3.0.0"

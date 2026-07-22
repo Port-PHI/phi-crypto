@@ -1,0 +1,10 @@
+# Rust build output (rebuilt from the committed vendor/ tree)
+rust/target/
+
+# Dart tooling / build artifacts (rebuilt by `dart pub get` on integration)
+dart/.dart_tool/
+dart/build/
+dart/pubspec.lock
+
+# vendor/, .cargo/config.toml, Cargo.lock and the generated bindings are intentionally committed
+# for fully offline, reproducible builds — do not ignore them.

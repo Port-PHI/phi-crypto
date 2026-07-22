@@ -1,0 +1,57 @@
+import org.gradle.internal.os.OperatingSystem
+
+plugins {
+    // Apply the java-library plugin for API and implementation separation.
+    id 'java-library'
+}
+
+group 'com.github.mattrglobal'
+version '0.4.4-SNAPSHOT'
+
+apply plugin: "java-library"
+
+repositories {
+    // Use Maven Central for resolving dependencies.
+    mavenCentral()
+}
+
+dependencies {
+    // Use JUnit test framework.
+    testImplementation 'junit:junit:4.13.2'
+
+    // This dependency is exported to consumers, that is to say found on their compile classpath.
+    api 'org.apache.commons:commons-math3:3.6.1'
+
+    // This dependency is used internally, and not exposed to consumers on their own compile classpath.
+    implementation 'com.google.guava:guava:31.0.1-jre'
+}
+
+// Build and Copy the JNI libraries for current platform
+task buildAndCopyJniLibrariesCurrentPlatform(type:Exec) {
+    commandLine './scripts/build_all.sh', 'SELF', "$buildDir/native"
+}
+
+// Build and Copy the JNI libraries for android
+task buildAndCopyJniLibrariesAndroid(type:Exec) {
+    commandLine './scripts/build_all.sh', 'ANDROID', "$buildDir/native"
+}
+
+// Build and copy the JNI libraries
+task buildAndCopyJniLibraries {
+    dependsOn ':buildAndCopyJniLibrariesCurrentPlatform'
+    dependsOn ':buildAndCopyJniLibrariesAndroid'
+}
+
+tasks.named('test') {
+    dependsOn buildAndCopyJniLibrariesCurrentPlatform
+
+    systemProperty("java.library.path", file("$buildDir/native/release").absolutePath)
+
+    // Use JUnit Platform for unit tests.
+    useJUnit()
+
+    maxHeapSize = '1G'
+
+    // Enable logging output to stderr
+    testLogging.showStandardStreams = true
+}

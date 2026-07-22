@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# flutter_rust_bridge_codegen configuration for phi-crypto-flutter.
+# Paths are relative to this file (PHI Source/phi-crypto/bindings/flutter/).
+# Regenerate the committed bindings with: flutter_rust_bridge_codegen generate
+rust_input: crate::api
+rust_root: rust/
+dart_root: dart/
+dart_output: dart/lib/src/rust

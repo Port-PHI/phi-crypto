@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Fuzzing harness for the C-ABI decoders. Kept out of the main workspace (cargo-fuzz builds it with
+# its own nightly-only flags) and never shipped: nothing links this crate into an artifact.
+[package]
+name = "phi_crypto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.phi_crypto]
+path = ".."
+
+[[bin]]
+name = "ffi_decoders"
+path = "fuzz_targets/ffi_decoders.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz builds are release builds; keep unwinding so libFuzzer reports a panic as a crash with a
+# usable stack instead of a bare abort. This profile governs the fuzz binary only — the shipped
+# staticlib keeps `panic = "abort"` from the root Cargo.toml.
+[profile.release]
+debug = 1
+panic = "unwind"

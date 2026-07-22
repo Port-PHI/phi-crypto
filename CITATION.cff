@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "phi-crypto"
+abstract: "Cryptographic core for the Phi network — BBS+ selective disclosure, dual-curve DID, WebAuthn, and voting nullifiers, built from one Rust core to C-ABI and WebAssembly."
+type: software
+authors:
+  - name: "Homaan Smart Data Co."
+    website: "https://portphi.com"
+url: "https://portphi.com"
+repository-code: "https://github.com/Port-PHI/phi-crypto"
+license: Apache-2.0
+keywords:
+  - cryptography
+  - rust
+  - bbs-plus
+  - selective-disclosure
+  - webauthn
+  - verifiable-credentials

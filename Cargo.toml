@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "phi_crypto"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+description = "Phi network crypto core — BBS+ and W3C bbs-2023 unlinkable selective disclosure, DID, dual-curve signatures, a WebAuthn verifier, and voting primitives. One Rust core, three outputs (WASM / FFI / C-ABI)."
+repository = "https://github.com/Port-PHI/phi-crypto"
+authors = ["Homaan Smart Data Co. <dev@portphi.com>"]
+
+[lib]
+# All three outputs: cdylib (WASM/native FFI), staticlib (C-ABI for phi-chain/Go), rlib (Rust tests).
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+# Anonymous-voting derivation proof (algebraic nullifier + DLEQ witness-equality). Fail-closed and
+# OFF by default: the default build, the C-ABI staticlib, and the wasm32 target pull in NOTHING new
+# (the module reuses the already-vendored bbs_plus / schnorr_pok / dock_crypto_utils / arkworks
+# crates — no dependency is added). Must not ship enabled until the mandatory external crypto audit
+# clears; the chain stays gated behind its own `voting_snark` build tag independently.
+voting_snark = []
+
+[dependencies]
+# --- Curves and hashing (audited RustCrypto crates) ---
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }   # secp256k1 (Cosmos default)
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }   # secp256r1 + WebAuthn (passkey/Secure Enclave)
+ecdsa = { version = "0.16", features = ["std"] }
+sha2 = "0.10"
+# BIP-39 mnemonics + BIP-32 hierarchical derivation for the OPT-IN k1 self-custody seed path
+# (src/seed.rs). RustCrypto/iqlusion crate; `default-features = false` selects the PURE-RUST k256
+# backend (bip32's `secp256k1` feature maps to k256, which is already a dependency) and keeps the
+# C-library-backed `secp256k1-ffi` backend switched OFF — nothing here compiles C.
+bip32 = { version = "0.5", default-features = false, features = ["bip39", "secp256k1"] }
+# BIP-39 requires the passphrase to be NFKD-normalized before it is used as the PBKDF2 salt. The
+# `bip32` crate does not normalize, so a non-ASCII passphrase (a Persian one, say) that a phone and a
+# browser hand us in different Unicode forms would derive two DIFFERENT seeds — two different
+# identities from what the user typed as one passphrase. Pure Rust, no_std-capable, builds on wasm32.
+unicode-normalization = "0.1"
+# --- Security utilities ---
+subtle = "2.5"        # constant-time comparison (against timing side channels)
+zeroize = { version = "1.7", features = ["derive"] }   # wipe secrets after use
+rand_core = { version = "0.6", features = ["std", "getrandom"] }
+# --- Serialization and encoding ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"       # base64url for WebAuthn clientDataJSON
+hex = "0.4"
+# --- BBS+ (unlinkable selective disclosure) — audited docknetwork crate, pinned to a rev; Cargo.lock
+# is committed. The explicit `version` mirrors the version at that rev so the requirement is not a
+# wildcard (the cargo-deny `bans.wildcards = "deny"` policy); the git `rev` remains the real pin. ---
+bbs_plus = { git = "https://github.com/docknetwork/crypto", rev = "224f195b", version = "0.25.0" }
+dock_crypto_utils = { git = "https://github.com/docknetwork/crypto", rev = "224f195b", version = "0.23.0" }
+schnorr_pok = { git = "https://github.com/docknetwork/crypto", rev = "224f195b", version = "0.23.0" }
+ark-bls12-381 = "0.4"
+ark-ec = "0.4"
+ark-ff = "0.4"
+ark-serialize = "0.4"
+ark-std = { version = "0.4", features = ["std"] }
+rand = "0.8"          # RNG compatible with ark_std::rand for BBS+
+blake2 = "0.10"       # Blake2b512 — docknetwork's conventional digest for parameters and challenge
+
+# --- WASM output (wasm32 target only; native/test builds never pull these in) ---
+# Browser boundary for the web app/site. getrandom with the "js" feature so OsRng works in the browser.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
+
+# --- W3C bbs-2023 interop suite (IRTF CFRG BBS, BLS12-381 SHA-256) — native targets only ---
+# Audited pairing_crypto (MATTR/DIF); conforms to the official ciphersuite and passes the IETF/W3C
+# test vectors byte-for-byte. Its blst C backend cannot cross-compile to wasm32 without a
+# wasm-capable C toolchain, so this suite is gated out on wasm (wasm keeps phi-bbs-v1).
+#
+# Pinned by full commit REV, not by tag. A git tag is a mutable ref: whoever controls the upstream
+# repository can move `v0.4.4` to point at different code, and a fetch would then resolve the same
+# manifest line to a different tree. A commit hash cannot be moved. This rev is the commit `v0.4.4`
+# dereferenced to at the time of vendoring, so the pinned code is unchanged — only its identifier is
+# now immutable. The crate is vendored for offline builds and Cargo.lock records the same rev.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pairing_crypto = { git = "https://github.com/mattrglobal/pairing_crypto", rev = "3228ba6ce0d90a14ba3a98dc1df7adb8bde0f86f", version = "0.4.4", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+hex-literal = "0.4"   # known-answer vectors in the integration test
+sha2 = "0.10"         # build the WebAuthn envelope in the integration test (rpId/clientData hash)
+base64 = "0.22"       # base64url-encode the challenge in the integration test
+hex = "0.4"           # decode hex fixtures in the bbs-2023 known-answer tests
+serde_json = "1"      # parse the official bbs-2023 JSON test vectors
+
+# The C-ABI staticlib/cdylib and the WASM module are built release-only (see Makefile / CI:
+# `cargo build --release`), so panic="abort" below always governs the FFI boundary — no unwinding can
+# cross the C-ABI (where it would be UB). dev/test builds intentionally keep the default unwind so
+# `cargo test` can catch panics and run #[should_panic] cases.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"        # FFI/WASM: no unwinding (across the C-ABI boundary, panic = UB)

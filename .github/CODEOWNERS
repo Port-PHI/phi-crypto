@@ -1,0 +1,3 @@
+# Default code owner for the whole repository.
+# Cryptographic and FFI-boundary code is consensus-/security-sensitive and always requires review.
+* @homaangit

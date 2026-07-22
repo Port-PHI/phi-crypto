@@ -1,0 +1,29 @@
+# Fully offline / local build: every dependency is read from the committed ./vendor directory,
+# so no download from crates.io or GitHub happens at build time (the Rust counterpart of
+# `go mod vendor` in phi-chain). Generated with `cargo vendor`; vendor/ is committed for full
+# offline self-sufficiency. Build/test offline with `cargo build --offline` / `cargo test --offline`.
+
+[source.crates-io]
+replace-with = "vendored-sources"
+
+# BBS+ (docknetwork) — the phi-bbs-v1 academic suite.
+[source."git+https://github.com/docknetwork/crypto?rev=224f195b"]
+git = "https://github.com/docknetwork/crypto"
+rev = "224f195b"
+replace-with = "vendored-sources"
+
+# blstrs (MATTR fork) — BLS12-381 backend used by pairing_crypto for the bbs-2023 suite.
+[source."git+https://github.com/mattrglobal/blstrs.git?rev=a0cb960"]
+git = "https://github.com/mattrglobal/blstrs.git"
+rev = "a0cb960"
+replace-with = "vendored-sources"
+
+# pairing_crypto (MATTR/DIF) — IRTF/W3C bbs-2023 conformant suite (native targets only). Pinned by
+# immutable commit rev rather than by the mutable v0.4.4 tag; see Cargo.toml for why.
+[source."git+https://github.com/mattrglobal/pairing_crypto?rev=3228ba6ce0d90a14ba3a98dc1df7adb8bde0f86f"]
+git = "https://github.com/mattrglobal/pairing_crypto"
+rev = "3228ba6ce0d90a14ba3a98dc1df7adb8bde0f86f"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Keep the third-party GitHub Actions used in .github/workflows (pinned to full commit SHAs) up to date.
+# Scoped to github-actions only: Cargo dependencies are vendored under ./vendor and pinned in Cargo.lock
+# for strictly-offline, reproducible builds, so they are upgraded deliberately (lock bump + re-vendor),
+# not by automated dependency PRs.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"

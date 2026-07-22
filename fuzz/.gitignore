@@ -1,0 +1,12 @@
+# Build outputs and fuzzing state — regenerated, never committed.
+target
+corpus
+artifacts
+coverage
+
+# Fuzz dependencies are FETCHED from crates.io against the committed Cargo.lock, not vendored (see
+# .cargo/config.toml). A local `cargo vendor` here would drop a large third-party tree into a public
+# repository for a build that never ships, so the directory is ignored to keep that out of history.
+# This is the one crate in the repo that is not vendored; ../vendor and
+# ../bindings/flutter/rust/vendor stay committed, because those DO build shipped artifacts.
+vendor
