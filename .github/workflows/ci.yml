@@ -23,7 +23,7 @@ jobs:
       # No network during the build: every dependency is read from ./vendor.
       CARGO_NET_OFFLINE: "true"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain (stable + wasm32 + clippy + rustfmt)
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -83,7 +83,7 @@ jobs:
       run:
         working-directory: bindings/flutter/rust
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain (stable + clippy)
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -162,7 +162,7 @@ jobs:
       run:
         working-directory: fuzz
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # cargo-fuzz requires nightly: the sanitizer and coverage flags it passes (-Zsanitizer=address,
       # -Cpasses=sancov-module) are unstable. This is the only job that is not on stable, and it gates
@@ -240,7 +240,7 @@ jobs:
     # The same script also runs the toolchain-free shape gate, which is what covers the offline tree
     # where cbindgen is not vendored.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -262,7 +262,7 @@ jobs:
     name: Supply-chain policy (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install cargo-deny (prebuilt)
         uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
         with:
@@ -283,7 +283,7 @@ jobs:
     name: Reproducible vendor (git deps are not checksummed)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       # Cargo does not checksum git dependencies, so the committed ./vendor is the trust anchor.
@@ -301,7 +301,7 @@ jobs:
     name: Secret scan (full history)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # full history so gitleaks scans every commit, not just HEAD
       # The gitleaks binary is run directly (pinned version + verified SHA-256) instead of
